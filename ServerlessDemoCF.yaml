@@ -1,0 +1,851 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  MyEmail:
+    Description: Email for notifications
+    Type: String
+    AllowedPattern: '[^@]+@[^@]+\.[^@]+'
+  MyBucket:
+    Description: S3 Bucket for Cloud Formation Artifacts
+    Type: String
+Outputs:
+  DevEndpoint:
+    Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${DevStage}/"
+Resources:
+  MenuTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: menu
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ImportSourceSpecification:
+        InputCompressionType: NONE
+        InputFormat: DYNAMODB_JSON
+        S3BucketSource:
+          S3Bucket: !Ref MyBucket
+          S3KeyPrefix: dynamodb_menu.json
+
+  OrderTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: order
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+
+  LambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleArchitectures:
+        - x86_64
+      CompatibleRuntimes:
+        - nodejs18.x
+      Content:
+        S3Bucket: !Ref MyBucket
+        S3Key: layer.zip
+      Description: 'AWS SDK'
+      LayerName: aws-sdk-x
+  
+  LambdaCreateOrder:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Runtime: nodejs18.x
+      Role: !GetAtt 'LambdaFnCreateOrderRole.Arn'
+      FunctionName: nsCreateOrder
+      Handler: index.handler
+      Layers: 
+        - !Ref LambdaLayer
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const randomUUID = require('crypto').randomUUID;
+
+          const docClient = new AWS.DynamoDB.DocumentClient();
+
+          async function getItem(id){
+            
+            try {
+              const params = {
+                TableName : 'menu',
+                Key: {
+                  id: id
+                }
+              }
+              
+              const { Item: data } = await docClient.get(params).promise()
+              return data
+            } catch (err) {
+              return err
+            }
+          }
+
+          exports.handler = async (event) => {
+
+              const body = event
+              
+              const id = randomUUID();
+              const customer = body.customer
+              const email = body.email
+              const menu_id = body.menu_id
+              const items = body.items
+              
+              // Lookup Menu
+              const menu = await getItem(menu_id)
+              const store = menu.name
+              
+              let order = {
+                id,
+                store,
+                customer,
+                email,
+                menu_id,
+                items: []
+              }
+              
+              // Inject Price, Name & Description by Item
+              items.forEach( item => {
+              
+                const menuItem = menu.items.find(mi => { return mi.sku === item.sku })
+                order.items.push({
+                  ...menuItem,
+                  quantity: item.quantity
+                })
+              })
+              
+              // console.log(JSON.stringify(order, null, 2))
+              
+              // Create Response
+              const response = {
+                  statusCode: 200,
+                  body: JSON.stringify(order),
+              };
+              return response;
+          }; 
+      Description: Invoke a function during stack creation.
+      TracingConfig:
+        Mode: Active
+
+  LambdaFnCreateOrderRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: LambdaFnCreateOrderRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWSLambdaBasicExecutionRole-CreateOrder
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'logs:CreateLogGroup'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}'
+              - Effect: Allow
+                Action: 
+                 - 'logs:CreateLogStream'
+                 - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/nsCreateOrder:*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+
+  LambdaMarshallOrder:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Runtime: nodejs18.x
+      Role: !GetAtt 'LambdaFnMarshallOrderRole.Arn'
+      FunctionName: nsMarshallOrder
+      Handler: index.handler
+      Layers: 
+        - !Ref LambdaLayer
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+
+          const marshallDynamoDbJson = (obj) => {
+              const dynamoJson = AWS.DynamoDB.Converter.marshall(obj)
+              return dynamoJson
+          }
+
+          exports.handler = async (event) => {
+              
+              const body = JSON.parse(event.body)
+              
+              const dynamoJson = marshallDynamoDbJson(body)
+              console.log(JSON.stringify(dynamoJson))
+              
+              const response = dynamoJson;
+              return response;
+          };
+      Description: Invoke a function during stack creation.
+      TracingConfig:
+        Mode: Active
+
+  LambdaFnMarshallOrderRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: LambdaFnMarshallOrderRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWSLambdaBasicExecutionRole-MarshallOrder
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'logs:CreateLogGroup'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}'
+              - Effect: Allow
+                Action: 
+                 - 'logs:CreateLogStream'
+                 - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/nsMarshallOrder:*'
+
+  LambdaComputeOrder:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Runtime: nodejs18.x
+      Role: !GetAtt 'LambdaFnComputeOrderRole.Arn'
+      FunctionName: nsComputeOrder
+      Environment:
+        Variables:
+          TAX_RATE: 0.07
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          const round = (num, decimalPlaces = 0) => {
+              var p = Math.pow(10, decimalPlaces);
+              var n = (num * p) * (1 + Number.EPSILON);
+              return Math.round(n) / p;
+          }
+
+          exports.handler = async (event) => {
+              
+              const body = JSON.parse(event.body)
+              console.log(JSON.stringify(body))
+              
+              const items = body.items
+              
+              let subtotal = 0
+              
+              items.forEach( item => {
+                  const price = item.price
+                  const quantity = item.quantity
+                  const amount = round(price * quantity, 2)
+                  subtotal += amount
+              })
+              
+              const taxRate = parseFloat(process.env.TAX_RATE)
+              const tax = round(subtotal * taxRate, 2)
+              const total = subtotal + tax
+              
+              const grand_total = {
+                  subtotal,
+                  tax,
+                  total
+              }
+              
+              const order = {
+                  ...body,
+                  grand_total
+              }
+              
+              const response = {
+                  statusCode: 200,
+                  headers: {
+                    "Access-Control-Allow-Origin": "*"
+                  },
+                  body: JSON.stringify(order),
+              };
+              return response;
+          };
+      Description: Invoke a function during stack creation.
+      TracingConfig:
+        Mode: Active
+
+  LambdaFnComputeOrderRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: LambdaFnComputeOrderRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWSLambdaBasicExecutionRole-ComputeOrder
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'logs:CreateLogGroup'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}'
+              - Effect: Allow
+                Action: 
+                 - 'logs:CreateLogStream'
+                 - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/nsComputeOrder:*'
+
+  LambdaGetMenu:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Runtime: nodejs18.x
+      Role: !GetAtt 'LambdaFnGetMenuRole.Arn'
+      FunctionName: nsGetMenu
+      Handler: index.handler
+      Layers: 
+        - !Ref LambdaLayer
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const docClient = new AWS.DynamoDB.DocumentClient();
+
+          const params = {
+            TableName : 'menu',
+            Key: {
+              id: 'e8884d14-a7d2-11ed-afa1-0242ac120002'
+            }
+          }
+
+          async function getItem(){
+            try {
+              const { Item: data } = await docClient.get(params).promise()
+              return data
+            } catch (err) {
+              return err
+            }
+          }
+
+          exports.handler = async (event) => {
+            try {
+              const data = await getItem()
+              return {
+                statusCode: 200,
+                headers: {
+                  "Access-Control-Allow-Origin": "*"
+                },
+                body: JSON.stringify(data) 
+              }
+            } catch (err) {
+              return { error: err }
+            }
+          }
+      Description: Invoke a function during stack creation.
+      TracingConfig:
+        Mode: Active
+
+  LambdaFnGetMenuRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: LambdaFnGetMenuRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AWSLambdaBasicExecutionRole-GetMenu
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'logs:CreateLogGroup'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}'
+              - Effect: Allow
+                Action: 
+                 - 'logs:CreateLogStream'
+                 - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/nsGetMenu:*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+
+  GetMenuPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: nsGetMenu
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/dev/GET/menu
+    DependsOn: 
+      - "LambdaGetMenu"
+
+  OrderTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "order-topic"
+
+  MySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref MyEmail
+      Protocol: email
+      TopicArn: !Ref 'OrderTopic'
+
+  OrderEventBus: 
+    Type: AWS::Events::EventBus
+    Properties: 
+        Name: "Order"
+
+  OrderEventRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Name: SendNotification
+      Description: "EventRule"
+      EventBusName: !GetAtt 'OrderEventBus.Arn'
+      EventPattern: 
+        source: 
+          - "CreateOrder"
+        detail-type: 
+          - "Transaction"
+      State: "ENABLED"
+      Targets: 
+        - Arn: 
+            Ref: "OrderTopic"
+          Id: "OrderTopic"
+          InputPath: "$.detail"
+
+  EventTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sns:Publish'
+            Resource: !Ref 'OrderTopic'
+      Topics:
+        - !Ref OrderTopic
+
+  ServerlessStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/stepfunction/serverless-statemachine-x-logs
+      RetentionInDays: 14
+
+  ServerlessStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: ServerlessStateMachine
+      StateMachineType: EXPRESS
+      LoggingConfiguration: 
+        Destinations: 
+          - CloudWatchLogsLogGroup:
+             LogGroupArn: !GetAtt ServerlessStateMachineLogGroup.Arn
+        IncludeExecutionData: True
+        Level: ALL
+      DefinitionString: !Sub |-
+        {
+          "Comment": "A description of serverless state machine",
+          "StartAt": "Create Order Invoke",
+          "States": {
+            "Create Order Invoke": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsCreateOrder:$LATEST"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Compute Order Invoke"
+            },
+            "Compute Order Invoke": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsComputeOrder:$LATEST"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException",
+                    "Lambda.TooManyRequestsException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Parallel"
+            },
+            "Parallel": {
+              "Type": "Parallel",
+              "Branches": [
+                {
+                  "StartAt": "Pass Order",
+                  "States": {
+                    "Pass Order": {
+                      "Type": "Pass",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "EventBridge PutEvents",
+                  "States": {
+                    "EventBridge PutEvents": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::aws-sdk:eventbridge:putEvents",
+                      "Parameters": {
+                        "Entries": [
+                          {
+                            "Detail.$": "States.StringToJson($.body)",
+                            "DetailType": "Transaction",
+                            "EventBusName": "Order",
+                            "Source": "CreateOrder"
+                          }
+                        ]
+                      },
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "Marshall Order Invoke",
+                  "States": {
+                    "Marshall Order Invoke": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsMarshallOrder:$LATEST"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException",
+                            "Lambda.TooManyRequestsException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "DynamoDB PutItem"
+                    },
+                    "DynamoDB PutItem": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::dynamodb:putItem",
+                      "Parameters": {
+                        "TableName": "order",
+                        "Item.$": "$"
+                      },
+                      "End": true
+                    }
+                  }
+                }
+              ],
+              "Next": "Pass Result"
+            },
+            "Pass Result": {
+              "Type": "Pass",
+              "End": true,
+              "InputPath": "$.[0]"
+            }
+          }
+        }
+      RoleArn: !GetAtt ServerlessStateMachineRole.Arn
+
+  APIGatewayToStepFunctionsRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: APIGatewayToStepFunctionsRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  ServerlessStateMachineRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: ServerlessStateMachineRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: LambdaInvokeScopedAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - lambda:InvokeFunction
+                Resource: 
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsComputeOrder:*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsMarshallOrder:*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsCreateOrder:*'
+        - PolicyName: DynamoDBTableContentScopedAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - dynamodb:PutItem
+                Resource: 
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/order'
+        - PolicyName: PutEventOrder
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - events:PutEvents
+                Resource: 
+                  - !Sub 'arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/Order'
+        - PolicyName: CloudWatchLogsDeliveryFullAccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Name: demo-api
+    DependsOn: 
+      - "LambdaGetMenu"
+      - "APIGatewayToStepFunctionsRole"
+
+  GetResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: menu
+      RestApiId: !Ref RestApi
+
+  GetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        ConnectionType: INTERNET
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsGetMenu/invocations"
+      ResourceId: !Ref GetResource
+      RestApiId: !Ref RestApi
+
+  MenuOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref GetResource
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+            method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET'"
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+      - StatusCode: 200
+        ResponseModels:
+          application/json: Empty
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Headers: false
+          method.response.header.Access-Control-Allow-Methods: false
+          method.response.header.Access-Control-Allow-Origin: false
+
+  PostResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: order
+      RestApiId: !Ref RestApi
+
+  PostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt 'APIGatewayToStepFunctionsRole.Arn'
+        IntegrationHttpMethod: POST
+        Type: AWS
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:states:action/StartSyncExecution"
+        RequestTemplates:
+          "application/json": !Sub |
+            #set($input = $input.json('$'))
+            {
+              "input": "$util.escapeJavaScript($input)",
+              "stateMachineArn": "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:ServerlessStateMachine"
+            }
+        IntegrationResponses:
+          - StatusCode: 200 
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "''"
+              method.response.header.Access-Control-Allow-Methods: "''"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              "application/json": |
+                #set ($bodyObj = $util.parseJson($input.body))
+
+                #if ($bodyObj.status == "SUCCEEDED")
+                  #set ($output = $bodyObj.output)
+                  #set ($payload = $util.parseJson($output))
+                  #set($context.responseOverride.status = $payload.statusCode)
+                  $payload.body
+                #elseif ($bodyObj.status == "FAILED")
+                  #set($context.responseOverride.status = 500)
+                  {
+                    "cause": "$bodyObj.cause",
+                    "error": "$bodyObj.error
+                  }
+                #else
+                  #set($context.responseOverride.status = 500)
+                  $input.body
+                #end
+      MethodResponses:
+      - StatusCode: 200
+        ResponseModels:
+          application/json: Empty
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Headers: false
+          method.response.header.Access-Control-Allow-Methods: false
+          method.response.header.Access-Control-Allow-Origin: false
+      ResourceId: !Ref PostResource
+      RestApiId: !Ref RestApi
+
+  OrderOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref PostResource
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+            method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+            method.response.header.Access-Control-Allow-Origin: "'*'"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+      - StatusCode: 200
+        ResponseModels:
+          application/json: Empty
+        ResponseParameters:
+          method.response.header.Access-Control-Allow-Headers: false
+          method.response.header.Access-Control-Allow-Methods: false
+          method.response.header.Access-Control-Allow-Origin: false
+
+  DevDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref RestApi
+    DependsOn:
+      - "GetResource"
+      - "PostResource"
+      - "GetMethod"
+      - "PostMethod"
+
+  DevStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: dev
+      Description: Dev Stage
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref DevDeployment
+      MethodSettings:
+        - ResourcePath: /menu
+          HttpMethod: GET
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'false'
+        - ResourcePath: /order
+          HttpMethod: POST
+          MetricsEnabled: 'true'
+          DataTraceEnabled: 'false'
+          ThrottlingBurstLimit: '999'
