@@ -1,0 +1,142 @@
+{
+    "Item": {
+        "id": {
+            "S": "e8884d14-a7d2-11ed-afa1-0242ac120002"
+        },
+        "items": {
+            "L": [
+                {
+                    "M": {
+                        "description": {
+                            "S": "Pepperoni, Canadian Bacon, Italian Sausage, Mushroom, Black Olive"
+                        },
+                        "name": {
+                            "S": "Puget Pounder"
+                        },
+                        "price": {
+                            "N": "29"
+                        },
+                        "sku": {
+                            "S": "MMP-001"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "Sun-dried Tomato, Spinach, Mushroom, Artichoke, Tomato, Broccoli"
+                        },
+                        "name": {
+                            "S": "Tree Hugger"
+                        },
+                        "price": {
+                            "N": "29"
+                        },
+                        "sku": {
+                            "S": "MMP-002"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "Mozzarella, Provolone"
+                        },
+                        "name": {
+                            "S": "Cheese"
+                        },
+                        "price": {
+                            "N": "21"
+                        },
+                        "sku": {
+                            "S": "MMP-003"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "Mushroom, Green Pepper, Red Onion, Tomato, Black Olive"
+                        },
+                        "name": {
+                            "S": "Hurricane"
+                        },
+                        "price": {
+                            "N": "27"
+                        },
+                        "sku": {
+                            "S": "MMP-004"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "Peanut Sauce Base, Thai Chicken, Green Pepper, Broccoli, Red Onion"
+                        },
+                        "name": {
+                            "S": "Thai One On"
+                        },
+                        "price": {
+                            "N": "29"
+                        },
+                        "sku": {
+                            "S": "MMP-005"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "BBQ Sauce Base, BBQ Chicken, Red Onion, Fresh Cilantro"
+                        },
+                        "name": {
+                            "S": "Texas Leaguer"
+                        },
+                        "price": {
+                            "N": "27"
+                        },
+                        "sku": {
+                            "S": "MMP-006"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "Tomato, Red Onion, Feta, Fresh Basil"
+                        },
+                        "name": {
+                            "S": "Super Margarita"
+                        },
+                        "price": {
+                            "N": "29"
+                        },
+                        "sku": {
+                            "S": "MMP-007"
+                        }
+                    }
+                },
+                {
+                    "M": {
+                        "description": {
+                            "S": "tomato sauce, mozzarella, 1.5x the pepperon, provolone"
+                        },
+                        "name": {
+                            "S": "Ultimate Pepperoni"
+                        },
+                        "price": {
+                            "N": "39"
+                        },
+                        "sku": {
+                            "S": "MMP-008"
+                        }
+                    }
+                }
+            ]
+        },
+        "name": {
+            "S": "Mama Mia Pizzaria"
+        }
+    }
+}
