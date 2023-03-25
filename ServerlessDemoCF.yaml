@@ -245,17 +245,17 @@ Resources:
               return round(n) / p
               
           def lambda_handler(event, context):
-              body = json.loads(event[‘body’])
+              body = json.loads(event['body'])
               print(json.dumps(body))
-              items = body[‘items’]
+              items = body['items']
               subtotal = 0
               for item in items:
-                  price = item[‘price’]
-                  quantity = item[‘quantity’]
+                  price = item['price']
+                  quantity = item['quantity']
                   print(price);
                   amount = custom_round(price * quantity, 2)
                   subtotal += amount
-              taxRate = float(os.environ[‘TAX_RATE’])
+              taxRate = float(os.environ['TAX_RATE'])
               tax = custom_round(subtotal * taxRate, 2)
               total = subtotal + tax
               grand_total = {
@@ -265,14 +265,14 @@ Resources:
               }
               order = {
                   **body,
-                  ‘grand_total’: grand_total
+                  'grand_total': grand_total
               }
               response = {
-                  ‘statusCode’: 200,
-                  ‘headers’: {
-                      ‘Access-Control-Allow-Origin’: ‘*’
+                  'statusCode': 200,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*'
                   },
-                  ‘body’: json.dumps(order)
+                  'body': json.dumps(order)
               }
               return response
       Description: Invoke a function during stack creation.
