@@ -259,9 +259,9 @@ Resources:
               tax = custom_round(subtotal * taxRate, 2)
               total = subtotal + tax
               grand_total = {
-                  ‘subtotal’: subtotal,
-                  ‘tax’: tax,
-                  ‘total’: total
+                  'subtotal': subtotal,
+                  'tax': tax,
+                  'total': total
               }
               order = {
                   **body,
