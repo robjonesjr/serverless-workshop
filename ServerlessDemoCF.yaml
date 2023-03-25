@@ -232,7 +232,7 @@ Resources:
       Environment:
         Variables:
           TAX_RATE: 0.07
-      Handler: index.handler
+      Handler: index.lambda_handler
       Code:
         ZipFile: |
           import json
