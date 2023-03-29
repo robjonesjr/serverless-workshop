@@ -116,22 +116,6 @@
                             "S": "MMP-007"
                         }
                     }
-                },
-                {
-                    "M": {
-                        "description": {
-                            "S": "tomato sauce, mozzarella, 1.5x the pepperon, provolone"
-                        },
-                        "name": {
-                            "S": "Ultimate Pepperoni"
-                        },
-                        "price": {
-                            "N": "39"
-                        },
-                        "sku": {
-                            "S": "MMP-008"
-                        }
-                    }
                 }
             ]
         },

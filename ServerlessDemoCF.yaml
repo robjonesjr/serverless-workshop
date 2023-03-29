@@ -226,55 +226,61 @@ Resources:
   LambdaComputeOrder:
     Type: 'AWS::Lambda::Function'
     Properties:
-      Runtime: python3.9
+      Runtime: nodejs18.x
       Role: !GetAtt 'LambdaFnComputeOrderRole.Arn'
-      FunctionName: pyComputeOrder
+      FunctionName: nsComputeOrder
       Environment:
         Variables:
           TAX_RATE: 0.07
-      Handler: index.lambda_handler
+      Handler: index.handler
       Code:
         ZipFile: |
-          import json
-          import os
-          import sys
-          
-          def custom_round(num, decimalPlaces=0):
-              p = 10 ** decimalPlaces
-              n = (num * p) * (1 + sys.float_info.epsilon)
-              return round(n) / p
+          const round = (num, decimalPlaces = 0) => {
+              var p = Math.pow(10, decimalPlaces);
+              var n = (num * p) * (1 + Number.EPSILON);
+              return Math.round(n) / p;
+          }
+
+          exports.handler = async (event) => {
               
-          def lambda_handler(event, context):
-              body = json.loads(event['body'])
-              print(json.dumps(body))
-              items = body['items']
-              subtotal = 0
-              for item in items:
-                  price = item['price']
-                  quantity = item['quantity']
-                  print(price);
-                  amount = custom_round(price * quantity, 2)
+              const body = JSON.parse(event.body)
+              console.log(JSON.stringify(body))
+              
+              const items = body.items
+              
+              let subtotal = 0
+              
+              items.forEach( item => {
+                  const price = item.price
+                  const quantity = item.quantity
+                  const amount = round(price * quantity, 2)
                   subtotal += amount
-              taxRate = float(os.environ['TAX_RATE'])
-              tax = custom_round(subtotal * taxRate, 2)
-              total = subtotal + tax
-              grand_total = {
-                  'subtotal': subtotal,
-                  'tax': tax,
-                  'total': total
+              })
+              
+              const taxRate = parseFloat(process.env.TAX_RATE)
+              const tax = round(subtotal * taxRate, 2)
+              const total = subtotal + tax
+              
+              const grand_total = {
+                  subtotal,
+                  tax,
+                  total
               }
-              order = {
-                  **body,
-                  'grand_total': grand_total
+              
+              const order = {
+                  ...body,
+                  grand_total
               }
-              response = {
-                  'statusCode': 200,
-                  'headers': {
-                      'Access-Control-Allow-Origin': '*'
+              
+              const response = {
+                  statusCode: 200,
+                  headers: {
+                    "Access-Control-Allow-Origin": "*"
                   },
-                  'body': json.dumps(order)
-              }
-              return response
+                  body: JSON.stringify(order),
+              };
+              return response;
+          };
       Description: Invoke a function during stack creation.
       TracingConfig:
         Mode: Active
@@ -305,7 +311,7 @@ Resources:
                 Action: 
                  - 'logs:CreateLogStream'
                  - 'logs:PutLogEvents'
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pyComputeOrder:*'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/nsComputeOrder:*'
 
   LambdaGetMenu:
     Type: 'AWS::Lambda::Function'
@@ -313,6 +319,9 @@ Resources:
       Runtime: nodejs18.x
       Role: !GetAtt 'LambdaFnGetMenuRole.Arn'
       FunctionName: nsGetMenu
+      Environment:
+        Variables:
+          MENU_ID: 'e8884d14-a7d2-11ed-afa1-0242ac120002'
       Handler: index.handler
       Layers: 
         - !Ref LambdaLayer
@@ -321,10 +330,11 @@ Resources:
           const AWS = require('aws-sdk');
           const docClient = new AWS.DynamoDB.DocumentClient();
 
+          const menuId = process.env.MENU_ID
           const params = {
             TableName : 'menu',
             Key: {
-              id: 'e8884d14-a7d2-11ed-afa1-0242ac120002'
+              id: menuId
             }
           }
 
@@ -494,7 +504,7 @@ Resources:
               "OutputPath": "$.Payload",
               "Parameters": {
                 "Payload.$": "$",
-                "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:pyComputeOrder:$LATEST"
+                "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsComputeOrder:$LATEST"
               },
               "Retry": [
                 {
@@ -633,7 +643,7 @@ Resources:
                 Action: 
                   - lambda:InvokeFunction
                 Resource: 
-                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:pyComputeOrder:*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsComputeOrder:*'
                   - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsMarshallOrder:*'
                   - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsCreateOrder:*'
         - PolicyName: DynamoDBTableContentScopedAccessPolicy
