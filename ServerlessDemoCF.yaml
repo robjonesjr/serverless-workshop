@@ -226,7 +226,7 @@ Resources:
   LambdaComputeOrder:
     Type: 'AWS::Lambda::Function'
     Properties:
-      Runtime: nodejs18.x
+      Runtime: python3.9
       Role: !GetAtt 'LambdaFnComputeOrderRole.Arn'
       FunctionName: pyComputeOrder
       Environment:
@@ -235,52 +235,49 @@ Resources:
       Handler: index.handler
       Code:
         ZipFile: |
-          const round = (num, decimalPlaces = 0) => {
-              var p = Math.pow(10, decimalPlaces);
-              var n = (num * p) * (1 + Number.EPSILON);
-              return Math.round(n) / p;
-          }
-
-          exports.handler = async (event) => {
-              
-              const body = JSON.parse(event.body)
-              console.log(JSON.stringify(body))
-              
-              const items = body.items
-              
-              let subtotal = 0
-              
-              items.forEach( item => {
-                  const price = item.price
-                  const quantity = item.quantity
-                  const amount = round(price * quantity, 2)
-                  subtotal += amount
-              })
-              
-              const taxRate = parseFloat(process.env.TAX_RATE)
-              const tax = round(subtotal * taxRate, 2)
-              const total = subtotal + tax
-              
-              const grand_total = {
-                  subtotal,
-                  tax,
-                  total
-              }
-              
-              const order = {
-                  ...body,
-                  grand_total
-              }
-              
-              const response = {
-                  statusCode: 200,
-                  headers: {
-                    "Access-Control-Allow-Origin": "*"
-                  },
-                  body: JSON.stringify(order),
-              };
-              return response;
-          };
+      Handler: index.lambda_handler
+       Code:
+         ZipFile: |
+           import json
+           import os
+           import sys
+          
+           def custom_round(num, decimalPlaces=0):
+               p = 10 ** decimalPlaces
+               n = (num * p) * (1 + sys.float_info.epsilon)
+               return round(n) / p
+               
+           def lambda_handler(event, context):
+               body = json.loads(event['body'])
+               print(json.dumps(body))
+               items = body['items']
+               subtotal = 0
+               for item in items:
+                   price = item['price']
+                   quantity = item['quantity']
+                   print(price);
+                   amount = custom_round(price * quantity, 2)
+                   subtotal += amount
+               taxRate = float(os.environ['TAX_RATE'])
+               tax = custom_round(subtotal * taxRate, 2)
+               total = subtotal + tax
+               grand_total = {
+                   'subtotal': subtotal,
+                   'tax': tax,
+                   'total': total
+               }
+               order = {
+                   **body,
+                   'grand_total': grand_total
+               }
+               response = {
+                   'statusCode': 200,
+                   'headers': {
+                       'Access-Control-Allow-Origin': '*'
+                   },
+                   'body': json.dumps(order)
+               }
+               return response
       Description: Invoke a function during stack creation.
       TracingConfig:
         Mode: Active
