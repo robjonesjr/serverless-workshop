@@ -228,7 +228,7 @@ Resources:
     Properties:
       Runtime: nodejs18.x
       Role: !GetAtt 'LambdaFnComputeOrderRole.Arn'
-      FunctionName: nsComputeOrder
+      FunctionName: pyComputeOrder
       Environment:
         Variables:
           TAX_RATE: 0.07
@@ -311,7 +311,7 @@ Resources:
                 Action: 
                  - 'logs:CreateLogStream'
                  - 'logs:PutLogEvents'
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/nsComputeOrder:*'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/pyComputeOrder:*'
 
   LambdaGetMenu:
     Type: 'AWS::Lambda::Function'
@@ -504,7 +504,7 @@ Resources:
               "OutputPath": "$.Payload",
               "Parameters": {
                 "Payload.$": "$",
-                "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsComputeOrder:$LATEST"
+                "FunctionName": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:pyComputeOrder:$LATEST"
               },
               "Retry": [
                 {
@@ -643,7 +643,7 @@ Resources:
                 Action: 
                   - lambda:InvokeFunction
                 Resource: 
-                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsComputeOrder:*'
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:pyComputeOrder:*'
                   - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsMarshallOrder:*'
                   - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:nsCreateOrder:*'
         - PolicyName: DynamoDBTableContentScopedAccessPolicy
