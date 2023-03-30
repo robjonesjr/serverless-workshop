@@ -232,52 +232,49 @@ Resources:
       Environment:
         Variables:
           TAX_RATE: 0.07
-      Handler: index.handler
+      Handler: index.lambda_handler
       Code:
         ZipFile: |
-      Handler: index.lambda_handler
-       Code:
-         ZipFile: |
-           import json
-           import os
-           import sys
-          
-           def custom_round(num, decimalPlaces=0):
-               p = 10 ** decimalPlaces
-               n = (num * p) * (1 + sys.float_info.epsilon)
-               return round(n) / p
-               
-           def lambda_handler(event, context):
-               body = json.loads(event['body'])
-               print(json.dumps(body))
-               items = body['items']
-               subtotal = 0
-               for item in items:
-                   price = item['price']
-                   quantity = item['quantity']
-                   print(price);
-                   amount = custom_round(price * quantity, 2)
-                   subtotal += amount
-               taxRate = float(os.environ['TAX_RATE'])
-               tax = custom_round(subtotal * taxRate, 2)
-               total = subtotal + tax
-               grand_total = {
-                   'subtotal': subtotal,
-                   'tax': tax,
-                   'total': total
-               }
-               order = {
-                   **body,
-                   'grand_total': grand_total
-               }
-               response = {
-                   'statusCode': 200,
-                   'headers': {
-                       'Access-Control-Allow-Origin': '*'
-                   },
-                   'body': json.dumps(order)
-               }
-               return response
+          import json
+          import os
+          import sys
+
+          def custom_round(num, decimalPlaces=0):
+              p = 10 ** decimalPlaces
+              n = (num * p) * (1 + sys.float_info.epsilon)
+              return round(n) / p
+              
+          def lambda_handler(event, context):
+              body = json.loads(event['body'])
+              print(json.dumps(body))
+              items = body['items']
+              subtotal = 0
+              for item in items:
+                  price = item['price']
+                  quantity = item['quantity']
+                  print(price);
+                  amount = custom_round(price * quantity, 2)
+                  subtotal += amount
+              taxRate = float(os.environ['TAX_RATE'])
+              tax = custom_round(subtotal * taxRate, 2)
+              total = subtotal + tax
+              grand_total = {
+                  'subtotal': subtotal,
+                  'tax': tax,
+                  'total': total
+              }
+              order = {
+                  **body,
+                  'grand_total': grand_total
+              }
+              response = {
+                  'statusCode': 200,
+                  'headers': {
+                      'Access-Control-Allow-Origin': '*'
+                  },
+                  'body': json.dumps(order)
+              }
+              return response
       Description: Invoke a function during stack creation.
       TracingConfig:
         Mode: Active
